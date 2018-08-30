@@ -1,14 +1,17 @@
 #include <string.h>
 #include <stdio.h>
 #include <SDL2/SDL.h>
-#include <SDL2/SDL2_gfxPrimitives.h> 
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL_mixer.h>
-#include <SDL2/SDL_ttf.h>
-#include "SDL_rotate.h"
 
 #include <switch.h>
 
+int inputoffset(int x, int y) {
+    return (y*1280 + x) * 4;
+}
+
+int outputoffset(int x, int y) {
+    return (y*768 + x) * 4;
+}
 
 int main(int argc, char **argv)
 {
@@ -16,39 +19,46 @@ int main(int argc, char **argv)
 
     //Initialize console. Using NULL as the second argument tells the console library to use the internal console structure as current one.
     consoleInit(NULL);
+    
+    char * imagefile = "/splash.png";
+    char * splashbin = "/splashy.bin";
+    int res = -1;
+    SDL_Surface *input_surface = IMG_Load(imagefile);
+    
+    if(!input_surface) {
+        printf("image load error %s \n", IMG_GetError());
+    }
 
-    //Move the cursor to row 16 and column 20 and then prints "Hello World!"
-    //To move the cursor you have to print "\x1b[r;cH", where r and c are respectively
-    //the row and column where you want your cursor to move
-    printf("\x1b[16;20HHello World!");
-	
-	char * imagefile = "/splash.png";
-	char * splashbin = "/splashy.bin";
-	int res = -1;
-	SDL_Surface *image = IMG_Load(imagefile);
-	if(!image) {
-		printf("image load error %s \n", IMG_GetError());
-	}
-	else {
-		double angle = -90;
-		double cangle, sangle;
-		int dstwidth, dstheight;
-		_rotozoomSurfaceSizeTrig(image->w, image->h, angle, &dstwidth, &dstheight, &cangle, &sangle);
-		printf("image pre-width: %d\n", image->w);
-		printf("image pre-height: %d\n", image->h);
-		printf("image dst-width: %d\n", dstwidth);
-		printf("image dst-height: %d\n", dstheight);
-		printf("image cangle: %lf\n", cangle);
-		printf("image sangle: %lf\n", sangle);
-		SDL_Surface * rot = _rotateSurface(image, angle, dstwidth/2, dstheight/2, 0, 0,0, dstwidth, dstheight, cangle ,sangle);
-		if(rot==NULL) {
-			printf("rotation failed!\n");
-		}
-		else
-			res = SDL_SaveBMP(rot, splashbin);
-	}
-	
-	printf("savebmp res: %d\n", res);
+    SDL_Surface *converted_surface = SDL_ConvertSurfaceFormat(input_surface, SDL_PIXELFORMAT_ABGR8888, 0);
+    
+    SDL_FreeSurface(input_surface);
+    
+    
+    char magenta[4] = { 0xFF, 0xFF, 0x00, 0xFF };
+    
+    // Convenience casting
+    char* in_pixels = converted_surface->pixels;
+    
+    char* out_pixels = malloc( 768 * 1280 * 4 );
+    
+    // Magenta fill area outside screen
+    for(int y=0; y<1280; y++)
+        for(int x=720; x<768; x++)
+             memcpy(&out_pixels[ outputoffset(x, y) ], magenta, 4);
+    
+    for(int y=0; y<720; y++)
+        for(int x=0; x<1280; x++)
+            memcpy(&out_pixels[ outputoffset(y,x) ], &in_pixels[ inputoffset(x,y) ], 4);
+    
+    SDL_FreeSurface(converted_surface);
+    
+    FILE* out_fd = fopen(splashbin, "wb");
+    res = fwrite(out_pixels, 1, 768 * 1280 * 4, out_fd);
+    fclose(out_fd);
+    
+    free(out_pixels);
+    
+    printf("Wrote %d bytes\n", res);
 
     while(appletMainLoop())
     {
@@ -68,4 +78,3 @@ int main(int argc, char **argv)
     gfxExit();
     return 0;
 }
-
